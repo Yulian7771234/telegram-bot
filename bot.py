@@ -1,63 +1,38 @@
 import telebot
 from telebot import types
 import time
-import threading  # <--- НОВЫЙ ИМПОРТ (для потока)
-import os         # <--- НОВЫЙ ИМПОРТ (для PORT)
-from http.server import HTTPServer, BaseHTTPRequestHandler  # <--- НОВЫЕ ИМПОРТЫ
-
-# ВСТАВЬ СВОЙ ТОКЕН СЮДА
-TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
-bot = telebot.TeleBot(TOKEN)
-# ========== ВЕБ-СЕРВЕР ДЛЯ RENDER И UPTIME МОНИТОРОВ ==========
 import threading
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-class SimpleHandler(BaseHTTPRequestHandler):
+# ВСТАВЬ СВОЙ ТОКЕН СЮДА
+TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
+bot = telebot.TeleBot(TOKEN)
+
+# ========== ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ UPTIME МОНИТОРОВ ==========
+class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.send_header('Content-type', 'text/plain; charset=utf-8')
         self.end_headers()
         self.wfile.write(b"Bot is running!")
-    
+
     def log_message(self, format, *args):
-        pass  # Отключаем логирование, чтобы не засорять консоль бота
-
-def run_webserver():
-    port = int(os.environ.get('PORT', 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    print(f"🌐 Веб-сервер запущен на порту {port}")
-    server.serve_forever()
-
-# Запускаем веб-сервер в отдельном потоке
-webserver_thread = threading.Thread(target=run_webserver, daemon=True)
-webserver_thread.start()
-print("🟢 Веб-сервер фоновый поток запущен")
-# ========== КОНЕЦ БЛОКА ==========
-
-# ========== НАЧАЛО НОВОГО БЛОКА: ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
-class HealthHandler(BaseHTTPRequestHandler):
-    """Обработчик для проверки здоровья"""
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-    
-    def log_message(self, format, *args):
-        pass  # Отключаем логирование запросов, чтобы не засорять консоль
+        # Отключаем логирование, чтобы не засорять консоль бота
+        pass
 
 def run_health_server():
-    """Запускает простой HTTP-сервер на порту из переменной окружения PORT"""
-    port = int(os.environ.get('PORT', 10000))  # Render дает порт через переменную PORT
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"✅ Health server listening on port {port}")
-    server.serve_forever()
+    port = int(os.environ.get('PORT', 10000))
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, HealthCheckHandler)
+    print(f"🌐 Веб-сервер для проверки здоровья запущен на порту {port}")
+    httpd.serve_forever()
 
-# Запускаем health-сервер в ОТДЕЛЬНОМ ПОТОКЕ, чтобы он не блокировал работу бота
+# Запускаем веб-сервер в отдельном фоновом потоке
 health_thread = threading.Thread(target=run_health_server, daemon=True)
 health_thread.start()
-print("🟢 Health server thread started")
-# ========== КОНЕЦ НОВОГО БЛОКА ==========
+print("🟢 Фоновый поток веб-сервера запущен")
+# ========== КОНЕЦ БЛОКА ==========
 
 # ========== НАСТРОЙКИ ==========
 CHANNEL_ID = -1003857838981  # ID твоего канала
@@ -88,8 +63,10 @@ helper_links = {
     }
 }
 
+# Словарь для временного хранения состояния выбора помощника
 user_selection = {}
 
+# ========== ПОЛУЧЕНИЕ USERNAME БОТА ==========
 def get_bot_username():
     try:
         me = bot.get_me()
@@ -97,6 +74,7 @@ def get_bot_username():
     except:
         return "bot_username"
 
+# ========== СОЗДАНИЕ INLINE-МЕНЮ ДЛЯ КАНАЛА ==========
 def create_channel_menu():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     
@@ -126,6 +104,7 @@ def create_channel_menu():
     
     return keyboard
 
+# ========== СОЗДАНИЕ МЕНЮ ДЛЯ ЛИЧКИ ==========
 def create_private_menu():
     keyboard = types.ReplyKeyboardMarkup(
         resize_keyboard=True, 
@@ -140,6 +119,7 @@ def create_private_menu():
     keyboard.add(btn_helper3)
     return keyboard
 
+# ========== ОТПРАВКА МЕНЮ В КАНАЛ ==========
 def send_menu_to_channel():
     menu_text = """
     📋 <b>МЕНЮ ПОМОЩНИКОВ</b>
@@ -163,6 +143,7 @@ def send_menu_to_channel():
     except Exception as e:
         print(f"❌ Ошибка отправки в канал: {e}")
 
+# ========== ПРОВЕРКА ПОДПИСКИ ==========
 def check_subscription(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_ID, user_id)
@@ -170,6 +151,7 @@ def check_subscription(user_id):
     except:
         return False
 
+# ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
 def send_welcome_with_menu(chat_id, user_name):
     welcome_text = f"""
     🎉 <b>ПРИВЕТСТВУЮ, {user_name}!</b>
@@ -184,6 +166,7 @@ def send_welcome_with_menu(chat_id, user_name):
         reply_markup=create_private_menu()
     )
 
+# ========== ОБРАБОТКА НОВЫХ УЧАСТНИКОВ КАНАЛА ==========
 @bot.chat_member_handler()
 def handle_new_member(update):
     if update.new_chat_member and update.new_chat_member.status in ['member', 'administrator']:
@@ -203,6 +186,7 @@ def handle_new_member(update):
         except:
             pass
 
+# ========== ОБРАБОТКА СООБЩЕНИЙ В КАНАЛЕ ==========
 @bot.channel_post_handler(func=lambda message: True)
 def handle_channel_posts(message):
     if message.text and "отчет" in message.text.lower():
@@ -214,6 +198,7 @@ def handle_channel_posts(message):
             reply_markup=create_channel_menu()
         )
 
+# ========== ПОКАЗ ССЫЛОК В КАНАЛЕ (ТОЛЬКО ПРОСМОТР) ==========
 def show_channel_links(helper_key, call):
     helper = helper_links[helper_key]
     
@@ -271,6 +256,7 @@ def show_channel_links(helper_key, call):
             reply_markup=keyboard
         )
 
+# ========== ПОКАЗ ССЫЛОК В БОТЕ (С УПРАВЛЕНИЕМ) ==========
 def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     helper = helper_links[helper_key]
     
@@ -360,6 +346,7 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
             reply_markup=keyboard
         )
 
+# ========== ОБРАБОТКА INLINE-КНОПОК ==========
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     if call.data == "channel_show_helper1":
@@ -416,6 +403,7 @@ def handle_callback(call):
         user_name = call.from_user.first_name
         show_bot_links(helper_key, call.message, user_name, call.message.message_id)
 
+# ========== ОБРАБОТКА КОМАНДЫ /start В ЛИЧКЕ ==========
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -441,6 +429,7 @@ def send_welcome(message):
     
     send_welcome_with_menu(message.chat.id, user_name)
 
+# ========== ВЫБОР ПОМОЩНИКА В ЛИЧКЕ ==========
 @bot.message_handler(func=lambda message: message.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
 def handle_helper_selection(message):
     user_id = message.from_user.id
@@ -456,6 +445,7 @@ def handle_helper_selection(message):
     elif message.text == "👤 Помощник 3":
         show_bot_links("helper3", message, user_name)
 
+# ========== ОБРАБОТКА ОПИСАНИЯ И ССЫЛКИ ==========
 @bot.message_handler(func=lambda message: True)
 def handle_link_input(message):
     user_id = message.from_user.id
