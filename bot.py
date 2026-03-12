@@ -1,8 +1,8 @@
+
 import telebot
 from telebot import types
 import time
 import os
-import threading
 import logging
 from flask import Flask, request
 import sys
@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ВСТАВЬ СВОЙ ТОКЕН СЮДА
+# ВСТАВЬ СВОЙ ТОКЕН
 TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
 if not TOKEN:
     logger.error("❌ ТОКЕН НЕ УСТАНОВЛЕН!")
@@ -23,339 +23,146 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# ========== НАСТРОЙКИ ДЛЯ WEBHOOK ==========
+# ========== НАСТРОЙКИ ==========
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
-if not RENDER_URL:
-    logger.warning("⚠️ RENDER_EXTERNAL_URL не найден, проверь настройки Render")
-    RENDER_URL = "http://localhost:5000"
-
-WEBHOOK_URL = f"{RENDER_URL}/webhook"
 PORT = int(os.environ.get('PORT', 10000))
+WEBHOOK_URL = f"{RENDER_URL}/webhook" if RENDER_URL else None
 
 # Создаем Flask приложение
 app = Flask(__name__)
 
-# ========== ХРАНЕНИЕ ССЫЛОК В ПАМЯТИ ==========
+# ========== ДАННЫЕ ==========
 helper_links = {
-    "helper1": {
-        "name": "Помощник 1", 
-        "links": {
-            "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
-            "link2": {"url": "", "description": "Таблица", "added_by": ""}
-        }
-    },
-    "helper2": {
-        "name": "Помощник 2", 
-        "links": {
-            "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
-            "link2": {"url": "", "description": "Таблица", "added_by": ""}
-        }
-    },
-    "helper3": {
-        "name": "Помощник 3", 
-        "links": {
-            "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
-            "link2": {"url": "", "description": "Таблица", "added_by": ""}
-        }
-    }
+    "helper1": {"name": "Помощник 1", "links": {
+        "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
+        "link2": {"url": "", "description": "Таблица", "added_by": ""}
+    }},
+    "helper2": {"name": "Помощник 2", "links": {
+        "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
+        "link2": {"url": "", "description": "Таблица", "added_by": ""}
+    }},
+    "helper3": {"name": "Помощник 3", "links": {
+        "link1": {"url": "", "description": "Яндекс.Диск", "added_by": ""},
+        "link2": {"url": "", "description": "Таблица", "added_by": ""}
+    }}
 }
 
-# Словарь для временного хранения состояния выбора помощника
 user_selection = {}
 
-# ========== ПОЛУЧЕНИЕ USERNAME БОТА ==========
-def get_bot_username():
-    try:
-        me = bot.get_me()
-        logger.info(f"✅ Бот @{me.username} авторизован")
-        return me.username
-    except Exception as e:
-        logger.error(f"❌ Ошибка получения username: {e}")
-        return "bot_username"
-
-# ========== СОЗДАНИЕ МЕНЮ ДЛЯ ЛИЧКИ ==========
+# ========== ФУНКЦИИ ==========
 def create_private_menu():
-    keyboard = types.ReplyKeyboardMarkup(
-        resize_keyboard=True, 
-        row_width=1,
-        input_field_placeholder="👇 Выбери действие"
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    keyboard.add(
+        types.KeyboardButton("👤 Помощник 1"),
+        types.KeyboardButton("👤 Помощник 2"),
+        types.KeyboardButton("👤 Помощник 3")
     )
-    btn_helper1 = types.KeyboardButton("👤 Помощник 1")
-    btn_helper2 = types.KeyboardButton("👤 Помощник 2")
-    btn_helper3 = types.KeyboardButton("👤 Помощник 3")
-    keyboard.add(btn_helper1)
-    keyboard.add(btn_helper2)
-    keyboard.add(btn_helper3)
     return keyboard
 
-# ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
-def send_welcome_with_menu(chat_id, user_name):
+# ========== ОБРАБОТЧИКИ КОМАНД ==========
+@bot.message_handler(commands=['start'])
+def start(message):
     welcome_text = f"""
-    🎉 <b>ПРИВЕТСТВУЮ, {user_name}!</b>
+    🎉 <b>ПРИВЕТСТВУЮ, {message.from_user.first_name}!</b>
     
     👇 <b>Выбери помощника для управления ссылками:</b>
     
-    📌 <b>Для каждого помощника можно добавить:</b>
-    • 🔗 <b>Яндекс.Диск</b> - ссылка на Яндекс.Диск
-    • 📊 <b>Таблица</b> - ссылка на таблицу
-    
-    📝 <b>Как пользоваться:</b>
-    1. Выбери помощника из меню ниже
-    2. Добавь ссылки через кнопки
-    3. Переходи по ссылкам
+    📌 <b>Для каждого можно добавить:</b>
+    • 🔗 Яндекс.Диск
+    • 📊 Таблица
     """
-    
-    try:
-        bot.send_message(
-            chat_id,
-            welcome_text,
-            parse_mode='HTML',
-            reply_markup=create_private_menu()
-        )
-        logger.info(f"✅ Приветствие отправлено пользователю {user_name}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка отправки приветствия: {e}")
+    bot.send_message(
+        message.chat.id, 
+        welcome_text, 
+        parse_mode='HTML',
+        reply_markup=create_private_menu()
+    )
 
-# ========== ПОКАЗ ССЫЛОК В БОТЕ ==========
-def show_bot_links(helper_key, message, user_name, edit_message_id=None):
+@bot.message_handler(func=lambda m: m.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
+def helper_menu(message):
+    helper_key = {"👤 Помощник 1": "helper1", "👤 Помощник 2": "helper2", "👤 Помощник 3": "helper3"}[message.text]
     helper = helper_links[helper_key]
     
     text = f"<b>{helper['name']}</b>\n\n"
-    text += f"📌 <b>Ссылки:</b>\n"
-    text += f"──────────────\n\n"
     
-    # Ссылка 1 - Яндекс.Диск
+    # Яндекс.Диск
     if helper["links"]["link1"]["url"]:
-        text += f"🔗 <b>Яндекс.Диск:</b>\n"
-        text += f"• {helper['links']['link1']['url']}\n"
-        text += f"👤 Добавил: {helper['links']['link1']['added_by']}\n\n"
+        text += f"🔗 <b>Яндекс.Диск:</b>\n{helper['links']['link1']['url']}\n👤 {helper['links']['link1']['added_by']}\n\n"
     else:
-        text += f"❌ <b>Яндекс.Диск</b> не добавлен\n\n"
+        text += "❌ Яндекс.Диск не добавлен\n\n"
     
-    # Ссылка 2 - Таблица
+    # Таблица
     if helper["links"]["link2"]["url"]:
-        text += f"📊 <b>Таблица:</b>\n"
-        text += f"• {helper['links']['link2']['url']}\n"
-        text += f"👤 Добавил: {helper['links']['link2']['added_by']}\n\n"
+        text += f"📊 <b>Таблица:</b>\n{helper['links']['link2']['url']}\n👤 {helper['links']['link2']['added_by']}\n\n"
     else:
-        text += f"❌ <b>Таблица</b> не добавлена\n\n"
-    
-    text += f"──────────────\n"
-    text += f"👇 <b>Выбери действие:</b>"
+        text += "❌ Таблица не добавлена\n\n"
     
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
-    # Кнопки для перехода по ссылкам
     if helper["links"]["link1"]["url"]:
-        btn_go1 = types.InlineKeyboardButton(
-            text="🔗 Открыть Яндекс.Диск",
-            url=helper["links"]["link1"]["url"]
-        )
-        keyboard.add(btn_go1)
-    
+        keyboard.add(types.InlineKeyboardButton("🔗 Открыть Яндекс.Диск", url=helper["links"]["link1"]["url"]))
     if helper["links"]["link2"]["url"]:
-        btn_go2 = types.InlineKeyboardButton(
-            text="📊 Открыть Таблицу",
-            url=helper["links"]["link2"]["url"]
-        )
-        keyboard.add(btn_go2)
+        keyboard.add(types.InlineKeyboardButton("📊 Открыть Таблицу", url=helper["links"]["link2"]["url"]))
     
-    # Кнопки добавления
-    btn_add1 = types.InlineKeyboardButton(
-        text="➕ Добавить Яндекс.Диск",
-        callback_data=f"add_{helper_key}_link1"
+    keyboard.add(
+        types.InlineKeyboardButton("➕ Добавить Яндекс.Диск", callback_data=f"add_{helper_key}_link1"),
+        types.InlineKeyboardButton("➕ Добавить Таблицу", callback_data=f"add_{helper_key}_link2")
     )
-    btn_add2 = types.InlineKeyboardButton(
-        text="➕ Добавить Таблицу",
-        callback_data=f"add_{helper_key}_link2"
-    )
-    keyboard.add(btn_add1, btn_add2)
     
-    # Кнопки удаления (только для своих)
-    if helper["links"]["link1"]["url"] and helper["links"]["link1"]["added_by"] == user_name:
-        btn_clear1 = types.InlineKeyboardButton(
-            text="🗑 Удалить Яндекс.Диск",
-            callback_data=f"clear_{helper_key}_link1"
-        )
-        keyboard.add(btn_clear1)
+    if helper["links"]["link1"]["url"] and helper["links"]["link1"]["added_by"] == message.from_user.first_name:
+        keyboard.add(types.InlineKeyboardButton("🗑 Удалить Яндекс.Диск", callback_data=f"clear_{helper_key}_link1"))
+    if helper["links"]["link2"]["url"] and helper["links"]["link2"]["added_by"] == message.from_user.first_name:
+        keyboard.add(types.InlineKeyboardButton("🗑 Удалить Таблицу", callback_data=f"clear_{helper_key}_link2"))
     
-    if helper["links"]["link2"]["url"] and helper["links"]["link2"]["added_by"] == user_name:
-        btn_clear2 = types.InlineKeyboardButton(
-            text="🗑 Удалить Таблицу",
-            callback_data=f"clear_{helper_key}_link2"
-        )
-        keyboard.add(btn_clear2)
+    keyboard.add(types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main"))
     
-    # Кнопка назад в меню
-    btn_back = types.InlineKeyboardButton(
-        text="◀️ Назад к списку помощников",
-        callback_data="back_to_private_menu"
-    )
-    keyboard.add(btn_back)
-    
-    try:
-        if edit_message_id:
-            try:
-                bot.edit_message_text(
-                    text,
-                    message.chat.id,
-                    edit_message_id,
-                    parse_mode='HTML',
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                logger.error(f"❌ Ошибка редактирования: {e}")
-                bot.send_message(
-                    message.chat.id,
-                    text,
-                    parse_mode='HTML',
-                    reply_markup=keyboard
-                )
-        else:
-            bot.send_message(
-                message.chat.id,
-                text,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
-    except Exception as e:
-        logger.error(f"❌ Ошибка отправки сообщения: {e}")
+    bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=keyboard)
 
-# ========== ОБРАБОТКА INLINE-КНОПОК ==========
 @bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    try:
-        if call.data == "back_to_private_menu":
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            send_welcome_with_menu(call.message.chat.id, call.from_user.first_name)
-            
-        elif call.data.startswith("add_"):
-            parts = call.data.split("_")
-            if len(parts) >= 3:
-                helper_key = parts[1]
-                link_key = parts[2]
-                
-                link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
-                
-                user_id = call.from_user.id
-                user_selection[user_id] = {
-                    "helper": helper_key, 
-                    "link": link_key,
-                    "message_id": call.message.message_id,
-                    "chat_id": call.message.chat.id
-                }
-                
-                bot.edit_message_text(
-                    f"📝 <b>Добавление ссылки</b>\n\n"
-                    f"Вы выбрали: <b>{link_name}</b>\n\n"
-                    f"Отправь мне ссылку (должна начинаться с http:// или https://):",
-                    call.message.chat.id,
-                    call.message.message_id,
-                    parse_mode='HTML'
-                )
-                
-        elif call.data.startswith("clear_"):
-            parts = call.data.split("_")
-            if len(parts) >= 3:
-                helper_key = parts[1]
-                link_key = parts[2]
-                
-                link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
-                
-                helper_links[helper_key]["links"][link_key] = {"url": "", "description": link_name, "added_by": ""}
-                
-                bot.answer_callback_query(call.id, f"✅ {link_name} удален!")
-                
-                user_name = call.from_user.first_name
-                show_bot_links(helper_key, call.message, user_name, call.message.message_id)
-                
-    except Exception as e:
-        logger.error(f"❌ Ошибка в обработчике callback: {e}")
-        try:
-            bot.answer_callback_query(call.id, "❌ Произошла ошибка")
-        except:
-            pass
+def callback(call):
+    if call.data == "back_to_main":
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        start(call.message)
+        return
+    
+    if call.data.startswith("add_"):
+        _, helper, link = call.data.split("_")
+        user_selection[call.from_user.id] = {"helper": helper, "link": link}
+        link_name = "Яндекс.Диск" if link == "link1" else "Таблицу"
+        bot.edit_message_text(
+            f"📝 Отправь ссылку на {link_name}:",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    
+    if call.data.startswith("clear_"):
+        _, helper, link = call.data.split("_")
+        helper_links[helper]["links"][link] = {"url": "", "description": "", "added_by": ""}
+        bot.answer_callback_query(call.id, "✅ Удалено!")
+        helper_menu(call.message)
 
-# ========== ОБРАБОТКА КОМАНДЫ /start ==========
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    try:
-        user_name = message.from_user.first_name
-        logger.info(f"📨 Получена команда /start от {user_name}")
-        send_welcome_with_menu(message.chat.id, user_name)
-    except Exception as e:
-        logger.error(f"❌ Ошибка в /start: {e}")
-
-# ========== ВЫБОР ПОМОЩНИКА ==========
-@bot.message_handler(func=lambda message: message.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
-def handle_helper_selection(message):
-    try:
-        user_name = message.from_user.first_name
+@bot.message_handler(func=lambda m: True)
+def handle_link(m):
+    if m.from_user.id in user_selection:
+        sel = user_selection[m.from_user.id]
+        link = m.text.strip()
         
-        if message.text == "👤 Помощник 1":
-            show_bot_links("helper1", message, user_name)
-        elif message.text == "👤 Помощник 2":
-            show_bot_links("helper2", message, user_name)
-        elif message.text == "👤 Помощник 3":
-            show_bot_links("helper3", message, user_name)
-            
-    except Exception as e:
-        logger.error(f"❌ Ошибка выбора помощника: {e}")
-
-# ========== ОБРАБОТКА ССЫЛОК ==========
-@bot.message_handler(func=lambda message: True)
-def handle_link_input(message):
-    try:
-        user_id = message.from_user.id
-        user_name = message.from_user.first_name
-        text = message.text
+        if not (link.startswith('http://') or link.startswith('https://')):
+            bot.reply_to(m, "❌ Нужно отправить ссылку, начинающуюся с http:// или https://")
+            return
         
-        if user_id in user_selection and "link" in user_selection[user_id]:
-            helper_key = user_selection[user_id]["helper"]
-            link_key = user_selection[user_id]["link"]
-            message_id = user_selection[user_id]["message_id"]
-            
-            link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
-            link = text.strip()
-            
-            if not (link.startswith('http://') or link.startswith('https://')):
-                bot.reply_to(
-                    message,
-                    f"❌ <b>Ошибка</b>\n\n"
-                    f"Ссылка на {link_name} должна начинаться с http:// или https://\n"
-                    f"Попробуй еще раз:",
-                    parse_mode='HTML'
-                )
-                return
-            
-            helper_links[helper_key]["links"][link_key] = {
-                "url": link, 
-                "description": link_name,
-                "added_by": user_name
-            }
-            
-            bot.send_message(
-                message.chat.id,
-                f"✅ <b>Ссылка сохранена!</b>\n\n"
-                f"📌 {link_name}: {link}",
-                parse_mode='HTML'
-            )
-            
-            show_bot_links(helper_key, message, user_name, message_id)
-            del user_selection[user_id]
-        else:
-            # Если сообщение не связано с добавлением ссылки
-            bot.reply_to(
-                message,
-                "❌ <b>Неизвестная команда</b>\n\n"
-                "Используй /start для начала работы",
-                parse_mode='HTML'
-            )
-            
-    except Exception as e:
-        logger.error(f"❌ Ошибка обработки ссылки: {e}")
+        link_name = "Яндекс.Диск" if sel["link"] == "link1" else "Таблицу"
+        helper_links[sel["helper"]]["links"][sel["link"]] = {
+            "url": link, "description": link_name, "added_by": m.from_user.first_name
+        }
+        
+        bot.send_message(m.chat.id, f"✅ {link_name} сохранен!")
+        del user_selection[m.from_user.id]
+        helper_menu(m)
+    else:
+        bot.reply_to(m, "❌ Используй /start")
 
-# ========== FLASK WEBHOOK ==========
+# ========== FLASK ==========
 @app.route('/', methods=['GET'])
 def index():
     return "Bot is running!", 200
@@ -367,65 +174,19 @@ def health():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        try:
-            json_string = request.get_data().decode('utf-8')
-            update = telebot.types.Update.de_json(json_string)
-            bot.process_new_updates([update])
-            return '', 200
-        except Exception as e:
-            logger.error(f"❌ Ошибка обработки webhook: {e}")
-            return 'Error', 500
-    else:
-        return 'Invalid request', 403
-
-# ========== НАСТРОЙКА WEBHOOK ==========
-def setup_webhook():
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"🔄 Попытка установки webhook #{attempt + 1}")
-            bot.remove_webhook()
-            time.sleep(2)
-            
-            if RENDER_URL and RENDER_URL != "http://localhost:5000":
-                result = bot.set_webhook(url=WEBHOOK_URL)
-                if result:
-                    logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
-                    return True
-            else:
-                logger.warning("⚠️ RENDER_EXTERNAL_URL не найден")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка установки webhook: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(5)
-    return False
+        update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
+        bot.process_new_updates([update])
+        return '', 200
+    return 'Invalid request', 403
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
-    print("""
-    ╔════════════════════════════════════════╗
-    ║         TELEGRAM BOT STARTING          ║
-    ╚════════════════════════════════════════╝
-    """)
+    # Удаляем старый вебхук и устанавливаем новый
+    if RENDER_URL:
+        bot.remove_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
     
-    logger.info("✅ Бот запускается...")
-    
-    # Получаем информацию о боте
-    try:
-        bot_info = bot.get_me()
-        logger.info(f"🤖 Бот: @{bot_info.username}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-    
-    # Устанавливаем webhook
-    if setup_webhook():
-        logger.info("🚀 Бот готов к работе!")
-        
-        # Держим процесс активным
-        while True:
-            time.sleep(60)
-    else:
-        logger.error("❌ Не удалось настроить webhook")
-        sys.exit(1)
+    # ЗАПУСКАЕМ FLASK (это главное!)
+    app.run(host='0.0.0.0', port=PORT)
