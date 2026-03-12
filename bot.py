@@ -5,6 +5,7 @@ import os
 import logging
 from flask import Flask, request
 import sys
+import threading
 
 # ========== ЛОГИРОВАНИЕ ==========
 logging.basicConfig(
@@ -74,13 +75,13 @@ def get_bot_username():
 
 # ========== УСТАНОВКА КОМАНД ДЛЯ БОТА ==========
 def set_bot_commands():
-    """Устанавливает список команд для бота (только /start)"""
+    """Устанавливает список команд для бота - создает кнопку меню с /start"""
     try:
         commands = [
-            types.BotCommand("start", "Начать работу с ботом")
+            types.BotCommand("start", "🚀 Запустить бота")
         ]
         bot.set_my_commands(commands)
-        logger.info("Команды бота установлены: /start")
+        logger.info("✅ Команда /start закреплена в меню бота")
     except Exception as e:
         logger.error(f"Ошибка установки команд: {e}")
 
@@ -102,48 +103,13 @@ def create_private_menu():
 # ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
 def send_welcome_with_menu(chat_id, user_name):
     welcome_text = f"""
-─────────────────────────────
-     ДОБРО ПОЖАЛОВАТЬ     
-─────────────────────────────
-
-Здравствуйте, {user_name}!
-
-Этот бот поможет вам управлять ссылками для помощников.
-
-─────────────────────────────
-     ВОЗМОЖНОСТИ
-─────────────────────────────
-
-• Управление ссылками для трех помощников
-• Добавление и удаление ссылок
-• Быстрый переход по сохраненным ссылкам
-
-Для каждого помощника можно добавить:
-- Яндекс.Диск
-- Таблицу
-
-─────────────────────────────
-     КАК ПОЛЬЗОВАТЬСЯ
-─────────────────────────────
-
-1. Выберите помощника из меню ниже
-2. Добавьте ссылки через кнопки
-3. Переходите по сохраненным ссылкам
-
-─────────────────────────────
-     КОМАНДЫ
-─────────────────────────────
-
-/start - показать это меню
-
-─────────────────────────────
+Для выбора просмотра/добавления ссылки нажмите на "Помощника" 👇
     """
     
     try:
         bot.send_message(
             chat_id,
             welcome_text,
-            parse_mode='HTML',
             reply_markup=create_private_menu()
         )
         logger.info(f"Приветствие отправлено пользователю {user_name}")
@@ -181,50 +147,59 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     helper = helper_links[helper_key]
     
     text = f"""
-─────────────────────────────
-        {helper['name']}
-─────────────────────────────
-
-"""
+{helper['name']}
+─────────────────────────────"""
 
     # Ссылка 1 - Яндекс.Диск
     if helper["links"]["link1"]["url"]:
-        text += f"ЯНДЕКС.ДИСК:\n{helper['links']['link1']['url']}\nДобавил: {helper['links']['link1']['added_by']}\n\n"
+        text += f"""
+
+📁 Яндекс.Диск
+{helper['links']['link1']['url']}
+Добавил: {helper['links']['link1']['added_by']}
+"""
     else:
-        text += f"Яндекс.Диск не добавлен\n\n"
+        text += """
+
+📁 Яндекс.Диск не добавлен"""
     
     # Ссылка 2 - Таблица
     if helper["links"]["link2"]["url"]:
-        text += f"ТАБЛИЦА:\n{helper['links']['link2']['url']}\nДобавил: {helper['links']['link2']['added_by']}\n\n"
+        text += f"""
+
+📊 Таблица
+{helper['links']['link2']['url']}
+Добавил: {helper['links']['link2']['added_by']}
+"""
     else:
-        text += f"Таблица не добавлена\n\n"
-    
-    text += f"─────────────────────────────"
+        text += """
+
+📊 Таблица не добавлена"""
     
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
     # Кнопки для перехода по ссылкам
     if helper["links"]["link1"]["url"]:
         btn_go1 = types.InlineKeyboardButton(
-            text="Перейти на Яндекс.Диск",
+            text="📁 Перейти на Яндекс.Диск",
             url=helper["links"]["link1"]["url"]
         )
         keyboard.add(btn_go1)
     
     if helper["links"]["link2"]["url"]:
         btn_go2 = types.InlineKeyboardButton(
-            text="Перейти к таблице",
+            text="📊 Перейти к таблице",
             url=helper["links"]["link2"]["url"]
         )
         keyboard.add(btn_go2)
     
     # Кнопки добавления
     btn_add1 = types.InlineKeyboardButton(
-        text="Добавить Яндекс.Диск",
+        text="➕ Добавить Яндекс.Диск",
         callback_data=f"add_{helper_key}_link1"
     )
     btn_add2 = types.InlineKeyboardButton(
-        text="Добавить Таблицу",
+        text="➕ Добавить Таблицу",
         callback_data=f"add_{helper_key}_link2"
     )
     keyboard.add(btn_add1, btn_add2)
@@ -232,21 +207,21 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     # Кнопки удаления (только для своих)
     if helper["links"]["link1"]["url"] and helper["links"]["link1"]["added_by"] == user_name:
         btn_clear1 = types.InlineKeyboardButton(
-            text="Удалить Яндекс.Диск",
+            text="✖ Удалить Яндекс.Диск",
             callback_data=f"clear_{helper_key}_link1"
         )
         keyboard.add(btn_clear1)
     
     if helper["links"]["link2"]["url"] and helper["links"]["link2"]["added_by"] == user_name:
         btn_clear2 = types.InlineKeyboardButton(
-            text="Удалить Таблицу",
+            text="✖ Удалить Таблицу",
             callback_data=f"clear_{helper_key}_link2"
         )
         keyboard.add(btn_clear2)
     
     # Кнопка назад в меню
     btn_back = types.InlineKeyboardButton(
-        text="Назад к списку помощников",
+        text="◀ Назад",
         callback_data="back_to_private_menu"
     )
     keyboard.add(btn_back)
@@ -258,7 +233,6 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                     text,
                     message.chat.id,
                     edit_message_id,
-                    parse_mode='HTML',
                     reply_markup=keyboard
                 )
             except Exception as e:
@@ -266,14 +240,12 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                 bot.send_message(
                     message.chat.id,
                     text,
-                    parse_mode='HTML',
                     reply_markup=keyboard
                 )
         else:
             bot.send_message(
                 message.chat.id,
                 text,
-                parse_mode='HTML',
                 reply_markup=keyboard
             )
     except Exception as e:
@@ -335,8 +307,8 @@ def handle_callback(call):
         except:
             pass
 
-# ========== ОБРАБОТКА ССЫЛОК ==========
-@bot.message_handler(func=lambda message: True)
+# ========== ОБРАБОТКА ДОБАВЛЕНИЯ ССЫЛОК ==========
+@bot.message_handler(func=lambda message: message.from_user.id in user_selection)
 def handle_link_input(message):
     try:
         user_id = message.from_user.id
@@ -378,18 +350,29 @@ def handle_link_input(message):
             
             show_bot_links(helper_key, message, user_name, message_id)
             del user_selection[user_id]
-        else:
-            # Если сообщение не связано с добавлением ссылки
-            bot.reply_to(
-                message,
-                f"─────────────────────────────\n"
-                f"     НЕИЗВЕСТНАЯ КОМАНДА\n"
-                f"─────────────────────────────\n\n"
-                f"Используйте /start для начала работы"
-            )
             
     except Exception as e:
         logger.error(f"Ошибка обработки ссылки: {e}")
+
+# ========== ОБРАБОТКА ВСЕХ ОСТАЛЬНЫХ СООБЩЕНИЙ (ИГНОРИРУЕМ) ==========
+@bot.message_handler(func=lambda message: True)
+def ignore_all_other_messages(message):
+    """Полностью игнорируем все остальные сообщения"""
+    logger.info(f"Сообщение от {message.from_user.first_name} проигнорировано")
+    # Ничего не делаем, просто пропускаем
+
+# ========== ФУНКЦИЯ ДЛЯ ПОДДЕРЖАНИЯ БОТА В РАБОЧЕМ СОСТОЯНИИ ==========
+def keep_alive():
+    """Периодически пингует бота, чтобы он не засыпал"""
+    while True:
+        try:
+            # Получаем информацию о боте (легкий запрос к Telegram API)
+            bot.get_me()
+            logger.info("🔄 Keep-alive ping отправлен")
+            time.sleep(300)  # Каждые 5 минут
+        except Exception as e:
+            logger.error(f"Ошибка в keep-alive: {e}")
+            time.sleep(60)
 
 # ========== FLASK WEBHOOK ==========
 @app.route('/', methods=['GET'])
@@ -458,12 +441,16 @@ if __name__ == "__main__":
     # Устанавливаем команды бота (только /start)
     set_bot_commands()
     
+    # Запускаем поток для поддержания бота в рабочем состоянии
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+    logger.info("✅ Поток keep-alive запущен")
+    
     # Устанавливаем webhook
     if setup_webhook():
-        logger.info("Бот готов к работе!")
+        logger.info("✅ Бот готов к работе! Команда /start закреплена в меню")
         # Запускаем Flask
         app.run(host='0.0.0.0', port=PORT, debug=False)
     else:
-        logger.error("Не удалось настроить webhook")
+        logger.error("❌ Не удалось настроить webhook")
         sys.exit(1)
-
