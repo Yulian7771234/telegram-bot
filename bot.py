@@ -7,9 +7,9 @@ import logging
 from flask import Flask, request
 import sys
 
-# Настройка логирования
+# ========== ИСПРАВЛЕННОЕ ЛОГИРОВАНИЕ ==========
 logging.basicConfig(
-    format='%(asime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Было asime, стало asctime
     level=logging.INFO,
     stream=sys.stdout
 )
@@ -40,6 +40,7 @@ app = Flask(__name__)
 try:
     CHANNEL_ID = -1003857838981  # ID твоего канала
     CHANNEL_LINK = "https://t.me/+gPXyWBWPB2FkYmZi"  # Ссылка на канал
+    logger.info(f"✅ Настройки загружены: CHANNEL_ID={CHANNEL_ID}")
 except Exception as e:
     logger.error(f"❌ Ошибка в настройках: {e}")
     CHANNEL_ID = None
@@ -77,9 +78,10 @@ user_selection = {}
 def get_bot_username():
     try:
         me = bot.get_me()
+        logger.info(f"✅ Бот @{me.username} авторизован")
         return me.username
     except Exception as e:
-        logger.error(f"Ошибка получения username: {e}")
+        logger.error(f"❌ Ошибка получения username: {e}")
         return "bot_username"
 
 # ========== СОЗДАНИЕ INLINE-МЕНЮ ДЛЯ КАНАЛА ==========
@@ -164,7 +166,7 @@ def check_subscription(user_id):
         member = bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ['creator', 'administrator', 'member']
     except Exception as e:
-        logger.error(f"Ошибка проверки подписки: {e}")
+        logger.error(f"❌ Ошибка проверки подписки для пользователя {user_id}: {e}")
         return False
 
 # ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
@@ -182,8 +184,9 @@ def send_welcome_with_menu(chat_id, user_name):
             parse_mode='HTML',
             reply_markup=create_private_menu()
         )
+        logger.info(f"✅ Приветствие отправлено пользователю {user_name} (ID: {chat_id})")
     except Exception as e:
-        logger.error(f"Ошибка отправки приветствия: {e}")
+        logger.error(f"❌ Ошибка отправки приветствия: {e}")
 
 # ========== ОБРАБОТКА НОВЫХ УЧАСТНИКОВ КАНАЛА ==========
 @bot.chat_member_handler()
@@ -205,8 +208,9 @@ def handle_new_member(update):
                 parse_mode='HTML',
                 reply_markup=create_channel_menu()
             )
+            logger.info("✅ Приветствие отправлено новому участнику канала")
         except Exception as e:
-            logger.error(f"Ошибка приветствия нового участника: {e}")
+            logger.error(f"❌ Ошибка приветствия нового участника: {e}")
 
 # ========== ОБРАБОТКА СООБЩЕНИЙ В КАНАЛЕ ==========
 @bot.channel_post_handler(func=lambda message: True)
@@ -220,8 +224,9 @@ def handle_channel_posts(message):
                 parse_mode='HTML',
                 reply_markup=create_channel_menu()
             )
+            logger.info("✅ Меню отправлено по команде 'отчет'")
         except Exception as e:
-            logger.error(f"Ошибка обработки сообщения в канале: {e}")
+            logger.error(f"❌ Ошибка обработки сообщения в канале: {e}")
 
 # ========== ПОКАЗ ССЫЛОК В КАНАЛЕ ==========
 def show_channel_links(helper_key, call):
@@ -273,8 +278,9 @@ def show_channel_links(helper_key, call):
             parse_mode='HTML',
             reply_markup=keyboard
         )
+        logger.info(f"✅ Показаны ссылки {helper['name']} в канале")
     except Exception as e:
-        logger.error(f"Ошибка редактирования сообщения: {e}")
+        logger.error(f"❌ Ошибка редактирования сообщения: {e}")
         try:
             bot.send_message(
                 call.message.chat.id,
@@ -283,7 +289,7 @@ def show_channel_links(helper_key, call):
                 reply_markup=keyboard
             )
         except Exception as e:
-            logger.error(f"Ошибка отправки сообщения: {e}")
+            logger.error(f"❌ Ошибка отправки сообщения: {e}")
 
 # ========== ПОКАЗ ССЫЛОК В БОТЕ ==========
 def show_bot_links(helper_key, message, user_name, edit_message_id=None):
@@ -361,8 +367,9 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                     parse_mode='HTML',
                     reply_markup=keyboard
                 )
+                logger.info(f"✅ Обновлены ссылки {helper['name']} для пользователя {user_name}")
             except Exception as e:
-                logger.error(f"Ошибка редактирования: {e}")
+                logger.error(f"❌ Ошибка редактирования: {e}")
                 bot.send_message(
                     message.chat.id,
                     text,
@@ -376,8 +383,9 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                 parse_mode='HTML',
                 reply_markup=keyboard
             )
+            logger.info(f"✅ Показаны ссылки {helper['name']} пользователю {user_name}")
     except Exception as e:
-        logger.error(f"Ошибка отправки сообщения: {e}")
+        logger.error(f"❌ Ошибка отправки сообщения: {e}")
 
 # ========== ОБРАБОТКА INLINE-КНОПОК ==========
 @bot.callback_query_handler(func=lambda call: True)
@@ -426,6 +434,7 @@ def handle_callback(call):
                     call.message.message_id,
                     parse_mode='HTML'
                 )
+                logger.info(f"✅ Пользователь {call.from_user.first_name} начал добавление ссылки {link_key} для {helper_key}")
         elif call.data.startswith("clear_"):
             parts = call.data.split("_")
             if len(parts) >= 3:
@@ -435,11 +444,12 @@ def handle_callback(call):
                 helper_links[helper_key]["links"][link_key] = {"url": "", "description": "", "added_by": ""}
                 
                 bot.answer_callback_query(call.id, "✅ Ссылка удалена!")
+                logger.info(f"✅ Пользователь {call.from_user.first_name} удалил ссылку {link_key} для {helper_key}")
                 
                 user_name = call.from_user.first_name
                 show_bot_links(helper_key, call.message, user_name, call.message.message_id)
     except Exception as e:
-        logger.error(f"Ошибка в обработчике callback: {e}")
+        logger.error(f"❌ Ошибка в обработчике callback: {e}")
         try:
             bot.answer_callback_query(call.id, "❌ Произошла ошибка")
         except:
@@ -451,6 +461,8 @@ def send_welcome(message):
     try:
         user_id = message.from_user.id
         user_name = message.from_user.first_name
+        
+        logger.info(f"📨 Получена команда /start от {user_name} (ID: {user_id})")
         
         is_subscribed = check_subscription(user_id)
         
@@ -468,11 +480,12 @@ def send_welcome(message):
                 parse_mode='HTML',
                 reply_markup=keyboard
             )
+            logger.info(f"⚠️ Пользователь {user_name} не подписан на канал")
             return
         
         send_welcome_with_menu(message.chat.id, user_name)
     except Exception as e:
-        logger.error(f"Ошибка в /start: {e}")
+        logger.error(f"❌ Ошибка в /start: {e}")
 
 # ========== ВЫБОР ПОМОЩНИКА В ЛИЧКЕ ==========
 @bot.message_handler(func=lambda message: message.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
@@ -480,6 +493,8 @@ def handle_helper_selection(message):
     try:
         user_id = message.from_user.id
         user_name = message.from_user.first_name
+        
+        logger.info(f"📨 Пользователь {user_name} выбрал: {message.text}")
         
         if not check_subscription(user_id) and CHANNEL_ID:
             return
@@ -491,7 +506,7 @@ def handle_helper_selection(message):
         elif message.text == "👤 Помощник 3":
             show_bot_links("helper3", message, user_name)
     except Exception as e:
-        logger.error(f"Ошибка выбора помощника: {e}")
+        logger.error(f"❌ Ошибка выбора помощника: {e}")
 
 # ========== ОБРАБОТКА ОПИСАНИЯ И ССЫЛКИ ==========
 @bot.message_handler(func=lambda message: True)
@@ -513,6 +528,7 @@ def handle_link_input(message):
                     "✅ Описание сохранено!\n\nТеперь отправь мне <b>ссылку</b> (должна начинаться с http:// или https://):",
                     parse_mode='HTML'
                 )
+                logger.info(f"✅ Пользователь {user_name} ввел описание: {text}")
             
             elif user_selection[user_id]["waiting_for"] == "url":
                 helper_key = user_selection[user_id]["helper"]
@@ -526,6 +542,7 @@ def handle_link_input(message):
                         message,
                         "❌ Это не похоже на ссылку\n\nСсылка должна начинаться с http:// или https://\nПопробуй еще раз:"
                     )
+                    logger.warning(f"⚠️ Пользователь {user_name} ввел некорректную ссылку: {link}")
                     return
                 
                 helper_links[helper_key]["links"][link_key] = {
@@ -543,13 +560,14 @@ def handle_link_input(message):
                     success_text,
                     parse_mode='HTML'
                 )
+                logger.info(f"✅ Пользователь {user_name} добавил ссылку для {helper_key}/{link_key}")
                 
                 show_bot_links(helper_key, message, user_name, message_id)
                 del user_selection[user_id]
         else:
             send_welcome_with_menu(message.chat.id, user_name)
     except Exception as e:
-        logger.error(f"Ошибка обработки ссылки: {e}")
+        logger.error(f"❌ Ошибка обработки ссылки: {e}")
 
 # ========== FLASK WEBHOOK ОБРАБОТЧИК ==========
 @app.route('/', methods=['GET'])
@@ -569,9 +587,10 @@ def webhook():
             bot.process_new_updates([update])
             return '', 200
         except Exception as e:
-            logger.error(f"Ошибка обработки webhook: {e}")
+            logger.error(f"❌ Ошибка обработки webhook: {e}")
             return 'Error', 500
     else:
+        logger.warning(f"⚠️ Получен запрос с неправильным content-type: {request.headers.get('content-type')}")
         return 'Invalid request', 403
 
 # ========== ИНИЦИАЛИЗАЦИЯ И ЗАПУСК ==========
@@ -580,20 +599,23 @@ def setup_webhook():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            logger.info(f"Попытка установки webhook #{attempt + 1}")
+            logger.info(f"🔄 Попытка установки webhook #{attempt + 1}")
             bot.remove_webhook()
             time.sleep(2)
             
             if RENDER_URL and RENDER_URL != "http://localhost:5000":
-                bot.set_webhook(url=WEBHOOK_URL)
-                logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
-                return True
+                result = bot.set_webhook(url=WEBHOOK_URL)
+                if result:
+                    logger.info(f"✅ Webhook успешно установлен на {WEBHOOK_URL}")
+                    return True
+                else:
+                    logger.error(f"❌ Не удалось установить webhook (попытка {attempt + 1})")
             else:
                 logger.warning("⚠️ RENDER_EXTERNAL_URL не найден, webhook не установлен")
                 return False
                 
         except Exception as e:
-            logger.error(f"Ошибка установки webhook (попытка {attempt + 1}): {e}")
+            logger.error(f"❌ Ошибка установки webhook (попытка {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(5)
             else:
@@ -612,6 +634,13 @@ if __name__ == "__main__":
     logger.info(f"📢 RENDER_URL: {RENDER_URL}")
     logger.info(f"🔧 PORT: {PORT}")
     
+    # Получаем информацию о боте
+    try:
+        bot_info = bot.get_me()
+        logger.info(f"🤖 Бот: @{bot_info.username} (ID: {bot_info.id})")
+    except Exception as e:
+        logger.error(f"❌ Не удалось получить информацию о боте: {e}")
+    
     # Отправляем меню в канал (если бот уже добавлен в канал)
     if CHANNEL_ID:
         try:
@@ -625,7 +654,7 @@ if __name__ == "__main__":
     if webhook_set:
         logger.info("🚀 Запуск Flask сервера для приема webhook'ов...")
         # Запускаем Flask в основном потоке
-        app.run(host='0.0.0.0', port=PORT)
+        app.run(host='0.0.0.0', port=PORT, debug=False)
     else:
         logger.error("❌ Не удалось настроить webhook. Бот не будет работать.")
         sys.exit(1)
