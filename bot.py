@@ -7,7 +7,7 @@ import logging
 from flask import Flask, request
 import sys
 
-# ========== ИСПРАВЛЕННОЕ ЛОГИРОВАНИЕ ==========
+# ========== ЛОГИРОВАНИЕ ==========
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
@@ -34,9 +34,6 @@ PORT = int(os.environ.get('PORT', 10000))
 
 # Создаем Flask приложение
 app = Flask(__name__)
-
-# ========== НАСТРОЙКИ КАНАЛА (ТОЛЬКО ДЛЯ ИНФОРМАЦИИ) ==========
-CHANNEL_LINK = "https://t.me/+gPXyWBWPB2FkYmZi"  # Ссылка на канал
 
 # ========== ХРАНЕНИЕ ССЫЛОК В ПАМЯТИ ==========
 helper_links = {
@@ -98,9 +95,14 @@ def send_welcome_with_menu(chat_id, user_name):
     
     👇 <b>Выбери помощника для управления ссылками:</b>
     
-    Каждый помощник может иметь:
-    • 🔗 Яндекс.Диск - ссылка на Яндекс.Диск
-    • 📊 Таблица - ссылка на таблицу
+    📌 <b>Для каждого помощника можно добавить:</b>
+    • 🔗 <b>Яндекс.Диск</b> - ссылка на Яндекс.Диск
+    • 📊 <b>Таблица</b> - ссылка на таблицу
+    
+    📝 <b>Как пользоваться:</b>
+    1. Выбери помощника из меню ниже
+    2. Добавь ссылки через кнопки
+    3. Переходи по ссылкам
     """
     
     try:
@@ -110,7 +112,7 @@ def send_welcome_with_menu(chat_id, user_name):
             parse_mode='HTML',
             reply_markup=create_private_menu()
         )
-        logger.info(f"✅ Приветствие отправлено пользователю {user_name} (ID: {chat_id})")
+        logger.info(f"✅ Приветствие отправлено пользователю {user_name}")
     except Exception as e:
         logger.error(f"❌ Ошибка отправки приветствия: {e}")
 
@@ -119,36 +121,41 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     helper = helper_links[helper_key]
     
     text = f"<b>{helper['name']}</b>\n\n"
+    text += f"📌 <b>Ссылки:</b>\n"
+    text += f"──────────────\n\n"
     
     # Ссылка 1 - Яндекс.Диск
     if helper["links"]["link1"]["url"]:
         text += f"🔗 <b>Яндекс.Диск:</b>\n"
-        text += f"🔗 {helper['links']['link1']['url']}\n"
+        text += f"• {helper['links']['link1']['url']}\n"
         text += f"👤 Добавил: {helper['links']['link1']['added_by']}\n\n"
     else:
-        text += f"❌ Яндекс.Диск не добавлен\n\n"
+        text += f"❌ <b>Яндекс.Диск</b> не добавлен\n\n"
     
     # Ссылка 2 - Таблица
     if helper["links"]["link2"]["url"]:
         text += f"📊 <b>Таблица:</b>\n"
-        text += f"🔗 {helper['links']['link2']['url']}\n"
+        text += f"• {helper['links']['link2']['url']}\n"
         text += f"👤 Добавил: {helper['links']['link2']['added_by']}\n\n"
     else:
-        text += f"❌ Таблица не добавлена\n\n"
+        text += f"❌ <b>Таблица</b> не добавлена\n\n"
+    
+    text += f"──────────────\n"
+    text += f"👇 <b>Выбери действие:</b>"
     
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
     # Кнопки для перехода по ссылкам
     if helper["links"]["link1"]["url"]:
         btn_go1 = types.InlineKeyboardButton(
-            text="🔗 Перейти на Яндекс.Диск",
+            text="🔗 Открыть Яндекс.Диск",
             url=helper["links"]["link1"]["url"]
         )
         keyboard.add(btn_go1)
     
     if helper["links"]["link2"]["url"]:
         btn_go2 = types.InlineKeyboardButton(
-            text="📊 Перейти к таблице",
+            text="📊 Открыть Таблицу",
             url=helper["links"]["link2"]["url"]
         )
         keyboard.add(btn_go2)
@@ -181,7 +188,7 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     
     # Кнопка назад в меню
     btn_back = types.InlineKeyboardButton(
-        text="◀️ Назад в меню",
+        text="◀️ Назад к списку помощников",
         callback_data="back_to_private_menu"
     )
     keyboard.add(btn_back)
@@ -196,7 +203,6 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                     parse_mode='HTML',
                     reply_markup=keyboard
                 )
-                logger.info(f"✅ Обновлены ссылки {helper['name']} для пользователя {user_name}")
             except Exception as e:
                 logger.error(f"❌ Ошибка редактирования: {e}")
                 bot.send_message(
@@ -212,7 +218,6 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                 parse_mode='HTML',
                 reply_markup=keyboard
             )
-            logger.info(f"✅ Показаны ссылки {helper['name']} пользователю {user_name}")
     except Exception as e:
         logger.error(f"❌ Ошибка отправки сообщения: {e}")
 
@@ -222,22 +227,14 @@ def handle_callback(call):
     try:
         if call.data == "back_to_private_menu":
             bot.delete_message(call.message.chat.id, call.message.message_id)
-            bot.send_message(
-                call.message.chat.id,
-                "👇 <b>Выбери помощника для управления ссылками:</b>\n\n"
-                "Каждый помощник может иметь:\n"
-                "• 🔗 Яндекс.Диск\n"
-                "• 📊 Таблица",
-                parse_mode='HTML',
-                reply_markup=create_private_menu()
-            )
+            send_welcome_with_menu(call.message.chat.id, call.from_user.first_name)
+            
         elif call.data.startswith("add_"):
             parts = call.data.split("_")
             if len(parts) >= 3:
                 helper_key = parts[1]
                 link_key = parts[2]
                 
-                # Определяем название ссылки для отображения
                 link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
                 
                 user_id = call.from_user.id
@@ -249,29 +246,29 @@ def handle_callback(call):
                 }
                 
                 bot.edit_message_text(
-                    f"📝 Отправь мне <b>ссылку на {link_name}</b>:\n\n"
-                    f"(должна начинаться с http:// или https://)",
+                    f"📝 <b>Добавление ссылки</b>\n\n"
+                    f"Вы выбрали: <b>{link_name}</b>\n\n"
+                    f"Отправь мне ссылку (должна начинаться с http:// или https://):",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode='HTML'
                 )
-                logger.info(f"✅ Пользователь {call.from_user.first_name} начал добавление {link_name} для {helper_key}")
+                
         elif call.data.startswith("clear_"):
             parts = call.data.split("_")
             if len(parts) >= 3:
                 helper_key = parts[1]
                 link_key = parts[2]
                 
-                # Определяем название ссылки для отображения
                 link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
                 
                 helper_links[helper_key]["links"][link_key] = {"url": "", "description": link_name, "added_by": ""}
                 
                 bot.answer_callback_query(call.id, f"✅ {link_name} удален!")
-                logger.info(f"✅ Пользователь {call.from_user.first_name} удалил {link_name} для {helper_key}")
                 
                 user_name = call.from_user.first_name
                 show_bot_links(helper_key, call.message, user_name, call.message.message_id)
+                
     except Exception as e:
         logger.error(f"❌ Ошибка в обработчике callback: {e}")
         try:
@@ -283,24 +280,17 @@ def handle_callback(call):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
-        user_id = message.from_user.id
         user_name = message.from_user.first_name
-        
-        logger.info(f"📨 Получена команда /start от {user_name} (ID: {user_id})")
-        
+        logger.info(f"📨 Получена команда /start от {user_name}")
         send_welcome_with_menu(message.chat.id, user_name)
-        
     except Exception as e:
         logger.error(f"❌ Ошибка в /start: {e}")
 
-# ========== ВЫБОР ПОМОЩНИКА В ЛИЧКЕ ==========
+# ========== ВЫБОР ПОМОЩНИКА ==========
 @bot.message_handler(func=lambda message: message.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
 def handle_helper_selection(message):
     try:
-        user_id = message.from_user.id
         user_name = message.from_user.first_name
-        
-        logger.info(f"📨 Пользователь {user_name} выбрал: {message.text}")
         
         if message.text == "👤 Помощник 1":
             show_bot_links("helper1", message, user_name)
@@ -308,6 +298,7 @@ def handle_helper_selection(message):
             show_bot_links("helper2", message, user_name)
         elif message.text == "👤 Помощник 3":
             show_bot_links("helper3", message, user_name)
+            
     except Exception as e:
         logger.error(f"❌ Ошибка выбора помощника: {e}")
 
@@ -324,19 +315,17 @@ def handle_link_input(message):
             link_key = user_selection[user_id]["link"]
             message_id = user_selection[user_id]["message_id"]
             
-            # Определяем название ссылки для отображения
             link_name = "Яндекс.Диск" if link_key == "link1" else "Таблицу"
-            
             link = text.strip()
             
             if not (link.startswith('http://') or link.startswith('https://')):
                 bot.reply_to(
                     message,
-                    f"❌ Это не похоже на ссылку\n\n"
+                    f"❌ <b>Ошибка</b>\n\n"
                     f"Ссылка на {link_name} должна начинаться с http:// или https://\n"
-                    f"Попробуй еще раз:"
+                    f"Попробуй еще раз:",
+                    parse_mode='HTML'
                 )
-                logger.warning(f"⚠️ Пользователь {user_name} ввел некорректную ссылку: {link}")
                 return
             
             helper_links[helper_key]["links"][link_key] = {
@@ -345,24 +334,28 @@ def handle_link_input(message):
                 "added_by": user_name
             }
             
-            success_text = f"✅ Ссылка на {link_name} успешно сохранена!\n\n"
-            success_text += f"<b>Ссылка:</b> {link}"
-            
             bot.send_message(
                 message.chat.id,
-                success_text,
+                f"✅ <b>Ссылка сохранена!</b>\n\n"
+                f"📌 {link_name}: {link}",
                 parse_mode='HTML'
             )
-            logger.info(f"✅ Пользователь {user_name} добавил {link_name} для {helper_key}")
             
             show_bot_links(helper_key, message, user_name, message_id)
             del user_selection[user_id]
         else:
-            send_welcome_with_menu(message.chat.id, user_name)
+            # Если сообщение не связано с добавлением ссылки
+            bot.reply_to(
+                message,
+                "❌ <b>Неизвестная команда</b>\n\n"
+                "Используй /start для начала работы",
+                parse_mode='HTML'
+            )
+            
     except Exception as e:
         logger.error(f"❌ Ошибка обработки ссылки: {e}")
 
-# ========== FLASK WEBHOOK ОБРАБОТЧИК ==========
+# ========== FLASK WEBHOOK ==========
 @app.route('/', methods=['GET'])
 def index():
     return "Bot is running!", 200
@@ -383,12 +376,10 @@ def webhook():
             logger.error(f"❌ Ошибка обработки webhook: {e}")
             return 'Error', 500
     else:
-        logger.warning(f"⚠️ Получен запрос с неправильным content-type: {request.headers.get('content-type')}")
         return 'Invalid request', 403
 
-# ========== ИНИЦИАЛИЗАЦИЯ И ЗАПУСК ==========
+# ========== НАСТРОЙКА WEBHOOK ==========
 def setup_webhook():
-    """Настройка webhook при запуске"""
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -399,23 +390,19 @@ def setup_webhook():
             if RENDER_URL and RENDER_URL != "http://localhost:5000":
                 result = bot.set_webhook(url=WEBHOOK_URL)
                 if result:
-                    logger.info(f"✅ Webhook успешно установлен на {WEBHOOK_URL}")
+                    logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
                     return True
-                else:
-                    logger.error(f"❌ Не удалось установить webhook (попытка {attempt + 1})")
             else:
-                logger.warning("⚠️ RENDER_EXTERNAL_URL не найден, webhook не установлен")
+                logger.warning("⚠️ RENDER_EXTERNAL_URL не найден")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка установки webhook (попытка {attempt + 1}): {e}")
+            logger.error(f"❌ Ошибка установки webhook: {e}")
             if attempt < max_retries - 1:
                 time.sleep(5)
-            else:
-                logger.error("❌ Не удалось установить webhook после всех попыток")
-                return False
+    return False
 
-# ========== ЗАПУСК БОТА ==========
+# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     print("""
     ╔════════════════════════════════════════╗
@@ -423,31 +410,22 @@ if __name__ == "__main__":
     ╚════════════════════════════════════════╝
     """)
     
-    logger.info("✅ Бот инициализируется...")
-    logger.info(f"📢 RENDER_URL: {RENDER_URL}")
-    logger.info(f"🔧 PORT: {PORT}")
+    logger.info("✅ Бот запускается...")
     
     # Получаем информацию о боте
     try:
         bot_info = bot.get_me()
-        logger.info(f"🤖 Бот: @{bot_info.username} (ID: {bot_info.id})")
+        logger.info(f"🤖 Бот: @{bot_info.username}")
     except Exception as e:
-        logger.error(f"❌ Не удалось получить информацию о боте: {e}")
+        logger.error(f"❌ Ошибка: {e}")
     
     # Устанавливаем webhook
-    webhook_set = setup_webhook()
-    
-    if webhook_set:
-        logger.info("🚀 Flask приложение готово к работе через gunicorn")
+    if setup_webhook():
+        logger.info("🚀 Бот готов к работе!")
         
-        # Бесконечный цикл для поддержания работы (при использовании gunicorn не нужен,
-        # но оставим для совместимости)
-        try:
-            while True:
-                time.sleep(60)
-                logger.debug("Бот работает...")
-        except KeyboardInterrupt:
-            logger.info("👋 Бот остановлен")
+        # Держим процесс активным
+        while True:
+            time.sleep(60)
     else:
-        logger.error("❌ Не удалось настроить webhook. Бот не будет работать.")
+        logger.error("❌ Не удалось настроить webhook")
         sys.exit(1)
