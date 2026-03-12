@@ -4,35 +4,26 @@ import time
 import threading
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import flask
+from flask import request
 
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА
 TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
 bot = telebot.TeleBot(TOKEN)
 
-# ========== ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ UPTIME МОНИТОРОВ ==========
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain; charset=utf-8')
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
+# ========== НАСТРОЙКИ ДЛЯ WEBHOOK ==========
+# Render сам подставляет этот URL
+RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+if not RENDER_URL:
+    print("⚠️ ВНИМАНИЕ: RENDER_EXTERNAL_URL не найден, webhook может не работать")
+WEBHOOK_URL = f"{RENDER_URL}/webhook"
+PORT = int(os.environ.get('PORT', 10000))
 
-    def log_message(self, format, *args):
-        # Отключаем логирование, чтобы не засорять консоль бота
-        pass
+# Создаем Flask приложение для webhook
+app = flask.Flask(__name__)
 
-def run_health_server():
-    port = int(os.environ.get('PORT', 10000))
-    server_address = ('', port)
-    httpd = HTTPServer(server_address, HealthCheckHandler)
-    print(f"🌐 Веб-сервер для проверки здоровья запущен на порту {port}")
-    httpd.serve_forever()
-
-# Запускаем веб-сервер в отдельном фоновом потоке
-health_thread = threading.Thread(target=run_health_server, daemon=True)
-health_thread.start()
-print("🟢 Фоновый поток веб-сервера запущен")
-# ========== КОНЕЦ БЛОКА ==========
+# ========== УДАЛЯЕМ СТАРЫЙ ВЕБ-СЕРВЕР (он больше не нужен) ==========
+# Весь блок с HTTPServer можно удалить, Flask будет его заменять
 
 # ========== НАСТРОЙКИ ==========
 CHANNEL_ID = -1003857838981  # ID твоего канала
@@ -502,9 +493,24 @@ def handle_link_input(message):
     else:
         send_welcome_with_menu(message.chat.id, user_name)
 
+# ========== FLASK WEBHOOK ОБРАБОТЧИК ==========
+@app.route('/', methods=['GET'])
+def index():
+    return "Bot is running!", 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    else:
+        return 'Invalid request', 403
+
 # ========== ЗАПУСК БОТА ==========
 if __name__ == "__main__":
-    print("✅ Бот запущен!")
+    print("✅ Бот запускается...")
     print("📢 В КАНАЛЕ - ТОЛЬКО ПРОСМОТР:")
     print("   • При нажатии на помощника - просмотр ссылок")
     print("   • Кнопки перехода по ссылкам")
@@ -514,21 +520,40 @@ if __name__ == "__main__":
     print("   • Можно удалять только свои ссылки")
     print("=" * 50)
     
-    send_menu_to_channel()
+    # Отправляем меню в канал
+    try:
+        send_menu_to_channel()
+    except Exception as e:
+        print(f"⚠️ Не удалось отправить меню в канал: {e}")
     
-    # Запускаем бота с защитой от ошибок
-    import time
-    max_retries = 5
-    retry_count = 0
-    
-    while retry_count < max_retries:
+    # Устанавливаем webhook
+    if RENDER_URL:
         try:
-            print(f"🔄 Попытка запуска #{retry_count + 1}")
-            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+            bot.remove_webhook()
+            time.sleep(1)
+            bot.set_webhook(url=WEBHOOK_URL)
+            print(f"✅ Webhook установлен на {WEBHOOK_URL}")
         except Exception as e:
-            retry_count += 1
-            print(f"❌ Ошибка: {e}")
-            print(f"⏳ Перезапуск через 10 секунд... (попытка {retry_count}/{max_retries})")
-            time.sleep(10)
+            print(f"❌ Ошибка установки webhook: {e}")
+    else:
+        print("⚠️ RENDER_EXTERNAL_URL не найден, запускаем polling...")
+        # Запускаем бота с защитой от ошибок
+        import time
+        max_retries = 5
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"🔄 Попытка запуска #{retry_count + 1}")
+                bot.infinity_polling(timeout=60, long_polling_timeout=60)
+            except Exception as e:
+                retry_count += 1
+                print(f"❌ Ошибка: {e}")
+                print(f"⏳ Перезапуск через 10 секунд... (попытка {retry_count}/{max_retries})")
+                time.sleep(10)
+        
+        print("❌ Бот остановлен после нескольких ошибок")
     
-    print("❌ Бот остановлен после нескольких ошибок")
+    # Запускаем Flask сервер
+    print(f"🚀 Запуск Flask сервера на порту {PORT}")
+    app.run(host='0.0.0.0', port=PORT)
