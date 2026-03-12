@@ -103,13 +103,14 @@ def create_private_menu():
 # ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
 def send_welcome_with_menu(chat_id, user_name):
     welcome_text = f"""
-Для выбора просмотра/добавления ссылки нажмите на "Помощника" 👇
+<b>Для выбора просмотра/добавления ссылки нажмите на "Помощника" 👇</b>
     """
     
     try:
         bot.send_message(
             chat_id,
             welcome_text,
+            parse_mode='HTML',
             reply_markup=create_private_menu()
         )
         logger.info(f"Приветствие отправлено пользователю {user_name}")
@@ -147,34 +148,35 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     helper = helper_links[helper_key]
     
     text = f"""
-{helper['name']}
-─────────────────────────────"""
+<b>{helper['name']}</b>
+
+"""
 
     # Ссылка 1 - Яндекс.Диск
     if helper["links"]["link1"]["url"]:
         text += f"""
-
-📁 Яндекс.Диск
+📁 <b>Яндекс.Диск</b>
 {helper['links']['link1']['url']}
-Добавил: {helper['links']['link1']['added_by']}
+<i>Добавил: {helper['links']['link1']['added_by']}</i>
+
 """
     else:
         text += """
+📁 <b>Яндекс.Диск не добавлен</b>
 
-📁 Яндекс.Диск не добавлен"""
+"""
     
     # Ссылка 2 - Таблица
     if helper["links"]["link2"]["url"]:
         text += f"""
-
-📊 Таблица
+📊 <b>Таблица</b>
 {helper['links']['link2']['url']}
-Добавил: {helper['links']['link2']['added_by']}
+<i>Добавил: {helper['links']['link2']['added_by']}</i>
 """
     else:
         text += """
-
-📊 Таблица не добавлена"""
+📊 <b>Таблица не добавлена</b>
+"""
     
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
@@ -233,6 +235,7 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                     text,
                     message.chat.id,
                     edit_message_id,
+                    parse_mode='HTML',
                     reply_markup=keyboard
                 )
             except Exception as e:
@@ -240,12 +243,14 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
                 bot.send_message(
                     message.chat.id,
                     text,
+                    parse_mode='HTML',
                     reply_markup=keyboard
                 )
         else:
             bot.send_message(
                 message.chat.id,
                 text,
+                parse_mode='HTML',
                 reply_markup=keyboard
             )
     except Exception as e:
@@ -276,12 +281,12 @@ def handle_callback(call):
                 }
                 
                 bot.edit_message_text(
-                    f"
-                         ДОБАВЛЕНИЕ ССЫЛКИ \n"
-                    f"Вы выбрали: {link_name}\n\n"
+                    f"<b>ДОБАВЛЕНИЕ ССЫЛКИ</b>\n\n"
+                    f"Вы выбрали: <b>{link_name}</b>\n\n"
                     f"Отправьте ссылку (должна начинаться с http:// или https://):",
                     call.message.chat.id,
-                    call.message.message_id
+                    call.message.message_id,
+                    parse_mode='HTML'
                 )
                 
         elif call.data.startswith("clear_"):
@@ -325,11 +330,10 @@ def handle_link_input(message):
             if not (link.startswith('http://') or link.startswith('https://')):
                 bot.reply_to(
                     message,
-                    f"─────────────────────────────\n"
-                    f"          ОШИБКА\n"
-                    f"─────────────────────────────\n\n"
+                    f"<b>ОШИБКА</b>\n\n"
                     f"Ссылка на {link_name} должна начинаться с http:// или https://\n\n"
-                    f"Попробуйте еще раз:"
+                    f"Попробуйте еще раз:",
+                    parse_mode='HTML'
                 )
                 return
             
@@ -341,10 +345,9 @@ def handle_link_input(message):
             
             bot.send_message(
                 message.chat.id,
-                f"─────────────────────────────\n"
-                f"     ССЫЛКА СОХРАНЕНА\n"
-                f"─────────────────────────────\n\n"
-                f"{link_name}: {link}"
+                f"<b>ССЫЛКА СОХРАНЕНА</b>\n\n"
+                f"{link_name}: {link}",
+                parse_mode='HTML'
             )
             
             show_bot_links(helper_key, message, user_name, message_id)
