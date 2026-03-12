@@ -8,6 +8,32 @@ from http.server import HTTPServer, BaseHTTPRequestHandler  # <--- НОВЫЕ И
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА
 TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
 bot = telebot.TeleBot(TOKEN)
+# ========== ВЕБ-СЕРВЕР ДЛЯ RENDER И UPTIME МОНИТОРОВ ==========
+import threading
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+    
+    def log_message(self, format, *args):
+        pass  # Отключаем логирование, чтобы не засорять консоль бота
+
+def run_webserver():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    print(f"🌐 Веб-сервер запущен на порту {port}")
+    server.serve_forever()
+
+# Запускаем веб-сервер в отдельном потоке
+webserver_thread = threading.Thread(target=run_webserver, daemon=True)
+webserver_thread.start()
+print("🟢 Веб-сервер фоновый поток запущен")
+# ========== КОНЕЦ БЛОКА ==========
 
 # ========== НАЧАЛО НОВОГО БЛОКА: ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
 class HealthHandler(BaseHTTPRequestHandler):
