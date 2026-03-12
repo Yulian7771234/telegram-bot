@@ -6,6 +6,7 @@ import logging
 from flask import Flask, request
 import sys
 import threading
+import requests  # Добавлен для внешних запросов
 
 # ========== ЛОГИРОВАНИЕ ==========
 logging.basicConfig(
@@ -363,17 +364,21 @@ def ignore_all_other_messages(message):
     logger.info(f"Сообщение от {message.from_user.first_name} проигнорировано")
     # Ничего не делаем, просто пропускаем
 
-# ========== ФУНКЦИЯ ДЛЯ ПОДДЕРЖАНИЯ БОТА В РАБОЧЕМ СОСТОЯНИИ ==========
-def keep_alive():
-    """Периодически пингует бота, чтобы он не засыпал"""
+# ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ ВНЕШНЕГО ПИНГА ==========
+def external_ping():
+    """Пингует свой собственный URL через внешний запрос"""
     while True:
         try:
-            # Получаем информацию о боте (легкий запрос к Telegram API)
-            bot.get_me()
-            logger.info("🔄 Keep-alive ping отправлен")
-            time.sleep(300)  # Каждые 5 минут
+            # Пингуем свой собственный URL через /health эндпоинт
+            ping_url = f"{RENDER_URL}/health"
+            response = requests.get(ping_url, timeout=10)
+            logger.info(f"🔄 Внешний пинг отправлен на {ping_url}, статус: {response.status_code}")
+            
+            # Ждем 4 минуты (240 секунд)
+            time.sleep(240)
+            
         except Exception as e:
-            logger.error(f"Ошибка в keep-alive: {e}")
+            logger.error(f"Ошибка внешнего пинга: {e}")
             time.sleep(60)
 
 # ========== FLASK WEBHOOK ==========
@@ -443,10 +448,10 @@ if __name__ == "__main__":
     # Устанавливаем команды бота (только /start)
     set_bot_commands()
     
-    # Запускаем поток для поддержания бота в рабочем состоянии
-    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
-    keep_alive_thread.start()
-    logger.info("✅ Поток keep-alive запущен")
+    # Запускаем поток для внешнего пинга (это решит проблему!)
+    external_ping_thread = threading.Thread(target=external_ping, daemon=True)
+    external_ping_thread.start()
+    logger.info("✅ Поток внешнего пинга запущен")
     
     # Устанавливаем webhook
     if setup_webhook():
