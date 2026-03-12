@@ -1,33 +1,49 @@
 import telebot
 from telebot import types
 import time
-import threading
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import flask
-from flask import request
+import threading
+import logging
+from flask import Flask, request
+import sys
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА
 TOKEN = "8211032032:AAFUUIgTep0FZdJo0GWmJNBk0j70vrtT2rM"
+if not TOKEN:
+    logger.error("❌ ТОКЕН НЕ УСТАНОВЛЕН!")
+    sys.exit(1)
+
 bot = telebot.TeleBot(TOKEN)
 
 # ========== НАСТРОЙКИ ДЛЯ WEBHOOK ==========
-# Render сам подставляет этот URL
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
 if not RENDER_URL:
-    print("⚠️ ВНИМАНИЕ: RENDER_EXTERNAL_URL не найден, webhook может не работать")
+    logger.warning("⚠️ RENDER_EXTERNAL_URL не найден, проверь настройки Render")
+    # Для локального тестирования
+    RENDER_URL = "http://localhost:5000"
+
 WEBHOOK_URL = f"{RENDER_URL}/webhook"
 PORT = int(os.environ.get('PORT', 10000))
 
-# Создаем Flask приложение для webhook
-app = flask.Flask(__name__)
-
-# ========== УДАЛЯЕМ СТАРЫЙ ВЕБ-СЕРВЕР (он больше не нужен) ==========
-# Весь блок с HTTPServer можно удалить, Flask будет его заменять
+# Создаем Flask приложение
+app = Flask(__name__)
 
 # ========== НАСТРОЙКИ ==========
-CHANNEL_ID = -1003857838981  # ID твоего канала
-CHANNEL_LINK = "https://t.me/+gPXyWBWPB2FkYmZi"  # Ссылка на канал
+try:
+    CHANNEL_ID = -1003857838981  # ID твоего канала
+    CHANNEL_LINK = "https://t.me/+gPXyWBWPB2FkYmZi"  # Ссылка на канал
+except Exception as e:
+    logger.error(f"❌ Ошибка в настройках: {e}")
+    CHANNEL_ID = None
+    CHANNEL_LINK = ""
 
 # ========== ХРАНЕНИЕ ССЫЛОК В ПАМЯТИ ==========
 helper_links = {
@@ -62,7 +78,8 @@ def get_bot_username():
     try:
         me = bot.get_me()
         return me.username
-    except:
+    except Exception as e:
+        logger.error(f"Ошибка получения username: {e}")
         return "bot_username"
 
 # ========== СОЗДАНИЕ INLINE-МЕНЮ ДЛЯ КАНАЛА ==========
@@ -112,6 +129,10 @@ def create_private_menu():
 
 # ========== ОТПРАВКА МЕНЮ В КАНАЛ ==========
 def send_menu_to_channel():
+    if not CHANNEL_ID:
+        logger.warning("⚠️ CHANNEL_ID не установлен, пропускаем отправку в канал")
+        return
+        
     menu_text = """
     📋 <b>МЕНЮ ПОМОЩНИКОВ</b>
     
@@ -130,16 +151,20 @@ def send_menu_to_channel():
             parse_mode='HTML',
             reply_markup=create_channel_menu()
         )
-        print(f"✅ Меню отправлено в канал")
+        logger.info("✅ Меню отправлено в канал")
     except Exception as e:
-        print(f"❌ Ошибка отправки в канал: {e}")
+        logger.error(f"❌ Ошибка отправки в канал: {e}")
 
 # ========== ПРОВЕРКА ПОДПИСКИ ==========
 def check_subscription(user_id):
+    if not CHANNEL_ID:
+        return True  # Если нет канала, считаем что подписка не нужна
+        
     try:
         member = bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ['creator', 'administrator', 'member']
-    except:
+    except Exception as e:
+        logger.error(f"Ошибка проверки подписки: {e}")
         return False
 
 # ========== ФУНКЦИЯ ПРИВЕТСТВИЯ С МЕНЮ ==========
@@ -150,16 +175,22 @@ def send_welcome_with_menu(chat_id, user_name):
     👇 <b>Выбери помощника для управления ссылками:</b>
     """
     
-    bot.send_message(
-        chat_id,
-        welcome_text,
-        parse_mode='HTML',
-        reply_markup=create_private_menu()
-    )
+    try:
+        bot.send_message(
+            chat_id,
+            welcome_text,
+            parse_mode='HTML',
+            reply_markup=create_private_menu()
+        )
+    except Exception as e:
+        logger.error(f"Ошибка отправки приветствия: {e}")
 
 # ========== ОБРАБОТКА НОВЫХ УЧАСТНИКОВ КАНАЛА ==========
 @bot.chat_member_handler()
 def handle_new_member(update):
+    if not CHANNEL_ID:
+        return
+        
     if update.new_chat_member and update.new_chat_member.status in ['member', 'administrator']:
         welcome_text = f"""
         <b>ДОБРО ПОЖАЛОВАТЬ В КОМАНДУ!</b>
@@ -174,22 +205,25 @@ def handle_new_member(update):
                 parse_mode='HTML',
                 reply_markup=create_channel_menu()
             )
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Ошибка приветствия нового участника: {e}")
 
 # ========== ОБРАБОТКА СООБЩЕНИЙ В КАНАЛЕ ==========
 @bot.channel_post_handler(func=lambda message: True)
 def handle_channel_posts(message):
     if message.text and "отчет" in message.text.lower():
-        bot.send_message(
-            message.chat.id,
-            """📋 <b>МЕНЮ ПОМОЩНИКОВ</b> 
+        try:
+            bot.send_message(
+                message.chat.id,
+                """📋 <b>МЕНЮ ПОМОЩНИКОВ</b> 
  <b> 👇 Нажми на помощника для просмотра ссылок</b> """,
-            parse_mode='HTML',
-            reply_markup=create_channel_menu()
-        )
+                parse_mode='HTML',
+                reply_markup=create_channel_menu()
+            )
+        except Exception as e:
+            logger.error(f"Ошибка обработки сообщения в канале: {e}")
 
-# ========== ПОКАЗ ССЫЛОК В КАНАЛЕ (ТОЛЬКО ПРОСМОТР) ==========
+# ========== ПОКАЗ ССЫЛОК В КАНАЛЕ ==========
 def show_channel_links(helper_key, call):
     helper = helper_links[helper_key]
     
@@ -239,15 +273,19 @@ def show_channel_links(helper_key, call):
             parse_mode='HTML',
             reply_markup=keyboard
         )
-    except:
-        bot.send_message(
-            call.message.chat.id,
-            text,
-            parse_mode='HTML',
-            reply_markup=keyboard
-        )
+    except Exception as e:
+        logger.error(f"Ошибка редактирования сообщения: {e}")
+        try:
+            bot.send_message(
+                call.message.chat.id,
+                text,
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+        except Exception as e:
+            logger.error(f"Ошибка отправки сообщения: {e}")
 
-# ========== ПОКАЗ ССЫЛОК В БОТЕ (С УПРАВЛЕНИЕМ) ==========
+# ========== ПОКАЗ ССЫЛОК В БОТЕ ==========
 def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     helper = helper_links[helper_key]
     
@@ -313,247 +351,281 @@ def show_bot_links(helper_key, message, user_name, edit_message_id=None):
     )
     keyboard.add(btn_back)
     
-    if edit_message_id:
-        try:
-            bot.edit_message_text(
-                text,
-                message.chat.id,
-                edit_message_id,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
-        except:
+    try:
+        if edit_message_id:
+            try:
+                bot.edit_message_text(
+                    text,
+                    message.chat.id,
+                    edit_message_id,
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logger.error(f"Ошибка редактирования: {e}")
+                bot.send_message(
+                    message.chat.id,
+                    text,
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+        else:
             bot.send_message(
                 message.chat.id,
                 text,
                 parse_mode='HTML',
                 reply_markup=keyboard
             )
-    else:
-        bot.send_message(
-            message.chat.id,
-            text,
-            parse_mode='HTML',
-            reply_markup=keyboard
-        )
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения: {e}")
 
 # ========== ОБРАБОТКА INLINE-КНОПОК ==========
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    if call.data == "channel_show_helper1":
-        show_channel_links("helper1", call)
-    elif call.data == "channel_show_helper2":
-        show_channel_links("helper2", call)
-    elif call.data == "channel_show_helper3":
-        show_channel_links("helper3", call)
-    elif call.data == "back_to_channel_menu":
-        bot.edit_message_text(
-            """📋 <b>МЕНЮ ПОМОЩНИКОВ</b> 
+    try:
+        if call.data == "channel_show_helper1":
+            show_channel_links("helper1", call)
+        elif call.data == "channel_show_helper2":
+            show_channel_links("helper2", call)
+        elif call.data == "channel_show_helper3":
+            show_channel_links("helper3", call)
+        elif call.data == "back_to_channel_menu":
+            bot.edit_message_text(
+                """📋 <b>МЕНЮ ПОМОЩНИКОВ</b> 
  <b> 👇 Нажми на помощника для просмотра ссылок</b> """,
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode='HTML',
-            reply_markup=create_channel_menu()
-        )
-    elif call.data == "back_to_private_menu":
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(
-            call.message.chat.id,
-            "👇 <b>Выбери помощника для управления ссылками:</b>",
-            parse_mode='HTML',
-            reply_markup=create_private_menu()
-        )
-    elif call.data.startswith("add_"):
-        parts = call.data.split("_")
-        helper_key = parts[1]
-        link_key = parts[2]
-        
-        user_id = call.from_user.id
-        user_selection[user_id] = {
-            "helper": helper_key, 
-            "link": link_key,
-            "message_id": call.message.message_id,
-            "chat_id": call.message.chat.id
-        }
-        
-        bot.edit_message_text(
-            f"📝 Отправь мне <b>описание</b> для ссылки:",
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode='HTML'
-        )
-    elif call.data.startswith("clear_"):
-        parts = call.data.split("_")
-        helper_key = parts[1]
-        link_key = parts[2]
-        
-        helper_links[helper_key]["links"][link_key] = {"url": "", "description": "", "added_by": ""}
-        
-        bot.answer_callback_query(call.id, "✅ Ссылка удалена!")
-        
-        user_name = call.from_user.first_name
-        show_bot_links(helper_key, call.message, user_name, call.message.message_id)
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='HTML',
+                reply_markup=create_channel_menu()
+            )
+        elif call.data == "back_to_private_menu":
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(
+                call.message.chat.id,
+                "👇 <b>Выбери помощника для управления ссылками:</b>",
+                parse_mode='HTML',
+                reply_markup=create_private_menu()
+            )
+        elif call.data.startswith("add_"):
+            parts = call.data.split("_")
+            if len(parts) >= 3:
+                helper_key = parts[1]
+                link_key = parts[2]
+                
+                user_id = call.from_user.id
+                user_selection[user_id] = {
+                    "helper": helper_key, 
+                    "link": link_key,
+                    "message_id": call.message.message_id,
+                    "chat_id": call.message.chat.id
+                }
+                
+                bot.edit_message_text(
+                    f"📝 Отправь мне <b>описание</b> для ссылки:",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode='HTML'
+                )
+        elif call.data.startswith("clear_"):
+            parts = call.data.split("_")
+            if len(parts) >= 3:
+                helper_key = parts[1]
+                link_key = parts[2]
+                
+                helper_links[helper_key]["links"][link_key] = {"url": "", "description": "", "added_by": ""}
+                
+                bot.answer_callback_query(call.id, "✅ Ссылка удалена!")
+                
+                user_name = call.from_user.first_name
+                show_bot_links(helper_key, call.message, user_name, call.message.message_id)
+    except Exception as e:
+        logger.error(f"Ошибка в обработчике callback: {e}")
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+        except:
+            pass
 
-# ========== ОБРАБОТКА КОМАНДЫ /start В ЛИЧКЕ ==========
+# ========== ОБРАБОТКА КОМАНДЫ /start ==========
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    user_id = message.from_user.id
-    user_name = message.from_user.first_name
-    
-    is_subscribed = check_subscription(user_id)
-    
-    if not is_subscribed:
-        keyboard = types.InlineKeyboardMarkup()
-        btn_channel = types.InlineKeyboardButton(
-            text="📢 Подписаться на канал",
-            url=CHANNEL_LINK
-        )
-        keyboard.add(btn_channel)
+    try:
+        user_id = message.from_user.id
+        user_name = message.from_user.first_name
         
-        bot.send_message(
-            message.chat.id,
-            "❌ <b>Доступ ограничен</b>\n\nПодпишись на канал, чтобы управлять ссылками:",
-            parse_mode='HTML',
-            reply_markup=keyboard
-        )
-        return
-    
-    send_welcome_with_menu(message.chat.id, user_name)
+        is_subscribed = check_subscription(user_id)
+        
+        if not is_subscribed and CHANNEL_ID:
+            keyboard = types.InlineKeyboardMarkup()
+            btn_channel = types.InlineKeyboardButton(
+                text="📢 Подписаться на канал",
+                url=CHANNEL_LINK
+            )
+            keyboard.add(btn_channel)
+            
+            bot.send_message(
+                message.chat.id,
+                "❌ <b>Доступ ограничен</b>\n\nПодпишись на канал, чтобы управлять ссылками:",
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+            return
+        
+        send_welcome_with_menu(message.chat.id, user_name)
+    except Exception as e:
+        logger.error(f"Ошибка в /start: {e}")
 
 # ========== ВЫБОР ПОМОЩНИКА В ЛИЧКЕ ==========
 @bot.message_handler(func=lambda message: message.text in ["👤 Помощник 1", "👤 Помощник 2", "👤 Помощник 3"])
 def handle_helper_selection(message):
-    user_id = message.from_user.id
-    user_name = message.from_user.first_name
-    
-    if not check_subscription(user_id):
-        return
-    
-    if message.text == "👤 Помощник 1":
-        show_bot_links("helper1", message, user_name)
-    elif message.text == "👤 Помощник 2":
-        show_bot_links("helper2", message, user_name)
-    elif message.text == "👤 Помощник 3":
-        show_bot_links("helper3", message, user_name)
+    try:
+        user_id = message.from_user.id
+        user_name = message.from_user.first_name
+        
+        if not check_subscription(user_id) and CHANNEL_ID:
+            return
+        
+        if message.text == "👤 Помощник 1":
+            show_bot_links("helper1", message, user_name)
+        elif message.text == "👤 Помощник 2":
+            show_bot_links("helper2", message, user_name)
+        elif message.text == "👤 Помощник 3":
+            show_bot_links("helper3", message, user_name)
+    except Exception as e:
+        logger.error(f"Ошибка выбора помощника: {e}")
 
 # ========== ОБРАБОТКА ОПИСАНИЯ И ССЫЛКИ ==========
 @bot.message_handler(func=lambda message: True)
 def handle_link_input(message):
-    user_id = message.from_user.id
-    user_name = message.from_user.first_name
-    text = message.text
-    
-    if not check_subscription(user_id):
-        return
-    
-    if user_id in user_selection and "link" in user_selection[user_id]:
-        if "waiting_for" not in user_selection[user_id]:
-            user_selection[user_id]["description"] = text
-            user_selection[user_id]["waiting_for"] = "url"
-            bot.reply_to(
-                message,
-                "✅ Описание сохранено!\n\nТеперь отправь мне <b>ссылку</b> (должна начинаться с http:// или https://):",
-                parse_mode='HTML'
-            )
+    try:
+        user_id = message.from_user.id
+        user_name = message.from_user.first_name
+        text = message.text
         
-        elif user_selection[user_id]["waiting_for"] == "url":
-            helper_key = user_selection[user_id]["helper"]
-            link_key = user_selection[user_id]["link"]
-            description = user_selection[user_id]["description"]
-            link = text.strip()
-            message_id = user_selection[user_id]["message_id"]
-            chat_id = user_selection[user_id]["chat_id"]
-            
-            if not (link.startswith('http://') or link.startswith('https://')):
+        if not check_subscription(user_id) and CHANNEL_ID:
+            return
+        
+        if user_id in user_selection and "link" in user_selection[user_id]:
+            if "waiting_for" not in user_selection[user_id]:
+                user_selection[user_id]["description"] = text
+                user_selection[user_id]["waiting_for"] = "url"
                 bot.reply_to(
                     message,
-                    "❌ Это не похоже на ссылку\n\nСсылка должна начинаться с http:// или https://\nПопробуй еще раз:"
+                    "✅ Описание сохранено!\n\nТеперь отправь мне <b>ссылку</b> (должна начинаться с http:// или https://):",
+                    parse_mode='HTML'
                 )
-                return
             
-            helper_links[helper_key]["links"][link_key] = {
-                "url": link, 
-                "description": description,
-                "added_by": user_name
-            }
-            
-            success_text = f"✅ Ссылка успешно сохранена!\n\n"
-            success_text += f"<b>Описание:</b> {description}\n"
-            success_text += f"<b>Ссылка:</b> {link}"
-            
-            bot.send_message(
-                message.chat.id,
-                success_text,
-                parse_mode='HTML'
-            )
-            
-            show_bot_links(helper_key, message, user_name, message_id)
-            del user_selection[user_id]
-    
-    else:
-        send_welcome_with_menu(message.chat.id, user_name)
+            elif user_selection[user_id]["waiting_for"] == "url":
+                helper_key = user_selection[user_id]["helper"]
+                link_key = user_selection[user_id]["link"]
+                description = user_selection[user_id]["description"]
+                link = text.strip()
+                message_id = user_selection[user_id]["message_id"]
+                
+                if not (link.startswith('http://') or link.startswith('https://')):
+                    bot.reply_to(
+                        message,
+                        "❌ Это не похоже на ссылку\n\nСсылка должна начинаться с http:// или https://\nПопробуй еще раз:"
+                    )
+                    return
+                
+                helper_links[helper_key]["links"][link_key] = {
+                    "url": link, 
+                    "description": description,
+                    "added_by": user_name
+                }
+                
+                success_text = f"✅ Ссылка успешно сохранена!\n\n"
+                success_text += f"<b>Описание:</b> {description}\n"
+                success_text += f"<b>Ссылка:</b> {link}"
+                
+                bot.send_message(
+                    message.chat.id,
+                    success_text,
+                    parse_mode='HTML'
+                )
+                
+                show_bot_links(helper_key, message, user_name, message_id)
+                del user_selection[user_id]
+        else:
+            send_welcome_with_menu(message.chat.id, user_name)
+    except Exception as e:
+        logger.error(f"Ошибка обработки ссылки: {e}")
 
 # ========== FLASK WEBHOOK ОБРАБОТЧИК ==========
 @app.route('/', methods=['GET'])
 def index():
     return "Bot is running!", 200
 
+@app.route('/health', methods=['GET'])
+def health():
+    return "OK", 200
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return '', 200
+        try:
+            json_string = request.get_data().decode('utf-8')
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return '', 200
+        except Exception as e:
+            logger.error(f"Ошибка обработки webhook: {e}")
+            return 'Error', 500
     else:
         return 'Invalid request', 403
 
+# ========== ИНИЦИАЛИЗАЦИЯ И ЗАПУСК ==========
+def setup_webhook():
+    """Настройка webhook при запуске"""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Попытка установки webhook #{attempt + 1}")
+            bot.remove_webhook()
+            time.sleep(2)
+            
+            if RENDER_URL and RENDER_URL != "http://localhost:5000":
+                bot.set_webhook(url=WEBHOOK_URL)
+                logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
+                return True
+            else:
+                logger.warning("⚠️ RENDER_EXTERNAL_URL не найден, webhook не установлен")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка установки webhook (попытка {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(5)
+            else:
+                logger.error("❌ Не удалось установить webhook после всех попыток")
+                return False
+
 # ========== ЗАПУСК БОТА ==========
 if __name__ == "__main__":
-    print("✅ Бот запускается...")
-    print("📢 В КАНАЛЕ - ТОЛЬКО ПРОСМОТР:")
-    print("   • При нажатии на помощника - просмотр ссылок")
-    print("   • Кнопки перехода по ссылкам")
-    print("📋 В БОТЕ - ПОЛНОЕ УПРАВЛЕНИЕ:")
-    print("   • При нажатии на помощника - управление ссылками")
-    print("   • Можно добавлять ссылки")
-    print("   • Можно удалять только свои ссылки")
-    print("=" * 50)
+    print("""
+    ╔════════════════════════════════════════╗
+    ║         TELEGRAM BOT STARTING          ║
+    ╚════════════════════════════════════════╝
+    """)
     
-    # Отправляем меню в канал
-    try:
-        send_menu_to_channel()
-    except Exception as e:
-        print(f"⚠️ Не удалось отправить меню в канал: {e}")
+    logger.info("✅ Бот инициализируется...")
+    logger.info(f"📢 RENDER_URL: {RENDER_URL}")
+    logger.info(f"🔧 PORT: {PORT}")
+    
+    # Отправляем меню в канал (если бот уже добавлен в канал)
+    if CHANNEL_ID:
+        try:
+            send_menu_to_channel()
+        except Exception as e:
+            logger.error(f"⚠️ Не удалось отправить меню в канал: {e}")
     
     # Устанавливаем webhook
-    if RENDER_URL:
-        try:
-            bot.remove_webhook()
-            time.sleep(1)
-            bot.set_webhook(url=WEBHOOK_URL)
-            print(f"✅ Webhook установлен на {WEBHOOK_URL}")
-        except Exception as e:
-            print(f"❌ Ошибка установки webhook: {e}")
-    else:
-        print("⚠️ RENDER_EXTERNAL_URL не найден, запускаем polling...")
-        # Запускаем бота с защитой от ошибок
-        import time
-        max_retries = 5
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                print(f"🔄 Попытка запуска #{retry_count + 1}")
-                bot.infinity_polling(timeout=60, long_polling_timeout=60)
-            except Exception as e:
-                retry_count += 1
-                print(f"❌ Ошибка: {e}")
-                print(f"⏳ Перезапуск через 10 секунд... (попытка {retry_count}/{max_retries})")
-                time.sleep(10)
-        
-        print("❌ Бот остановлен после нескольких ошибок")
+    webhook_set = setup_webhook()
     
-    # Запускаем Flask сервер
-    print(f"🚀 Запуск Flask сервера на порту {PORT}")
-    app.run(host='0.0.0.0', port=PORT)
+    if webhook_set:
+        logger.info("🚀 Запуск Flask сервера для приема webhook'ов...")
+        # Запускаем Flask в основном потоке
+        app.run(host='0.0.0.0', port=PORT)
+    else:
+        logger.error("❌ Не удалось настроить webhook. Бот не будет работать.")
+        sys.exit(1)
